@@ -1,6 +1,6 @@
 
 #include "board_conf.h"
-// #include <ArduinoJson.h>
+#include <ArduinoJson.h>
 
 const uint8_t resolution = 8;
 
@@ -9,8 +9,10 @@ int channel_A = 0;
 int channel_B = 1;
 
 int throttle = 140;
-int min_throttle = 80;
-int max_throttle = 250; 
+int throttle_min = 70;
+int throttle_max = 250; 
+int throt_a;
+int throt_b;
 
 char move;
 
@@ -27,32 +29,72 @@ void initMotors(){
 
 }
 
-void dirNormal(){
-  digitalWrite(DDA1, LOW);
-  digitalWrite(DDA2, HIGH);
-  digitalWrite(DDB1, LOW);
-  digitalWrite(DDB2, HIGH);
+bool setMotors(int mota, int motb){
+
+  bool throttle_error = false;
+  if (mota > 0) {
+    
+    if (mota <= throttle_max) {
+      digitalWrite(DDA1, LOW); //Direction is controlled by whatever pin is set high
+      digitalWrite(DDA2, HIGH);
+    }
+
+    else {
+      throttle_error = true;
+    }
+  }
+
+  else{
+    int rev_max = -throttle_max;
+    
+    if (mota > rev_max){
+      digitalWrite(DDA1, HIGH);
+      digitalWrite(DDA2, LOW);
+    }
+
+    else {
+      throttle_error = true;
+    }
+  }
+
+  if (motb > 0) {
+    
+    if (motb <= throttle_max){
+      digitalWrite(DDB1, LOW);
+      digitalWrite(DDB2, HIGH);
+    }
+
+    else {
+      throttle_error = true;
+    }
+  }
+
+  else{
+    int rev_max = -throttle_max;
+    
+    if (motb > rev_max){
+      digitalWrite(DDB1, HIGH);
+      digitalWrite(DDB2, LOW);
+    }
+
+    else {
+      throttle_error = true;
+    }
+  }
+
+  if (!throttle_error){
+    ledcWrite(PWMA, mota);
+    ledcWrite(PWMB, motb);
+  }
+  
+    return throttle_error;
+
 }
 
-void dirInversed(){
-  digitalWrite(DDA1, HIGH);
-  digitalWrite(DDA2, LOW);
-  digitalWrite(DDB1, HIGH);
-  digitalWrite(DDB2, LOW);
-}
+void stopMotors(){
+  ledcWrite(PWMA, 0);
+  ledcWrite(PWMB, 0);
 
-void spinNormal(){
-  digitalWrite(DDA1, LOW);
-  digitalWrite(DDA2, HIGH);
-  digitalWrite(DDB1, HIGH);
-  digitalWrite(DDB2, LOW);
-}
-
-void spinInversed(){
-  digitalWrite(DDA1, HIGH);
-  digitalWrite(DDA2, LOW);
-  digitalWrite(DDB1, LOW);
-  digitalWrite(DDB2, HIGH);
 }
 
 void setup() {
@@ -62,52 +104,23 @@ void setup() {
   
 }
 
+
 void loop() {
-  //Not currently used
-  //Serial.println("Hello World");
-  if(Serial.available() > 0){
-    move = Serial.read();
-  }
+    if(Serial.available() > 0){
+    String jsonString = Serial.readString();
+    StaticJsonDocument<200> cmd;
+    deserializeJson(cmd, jsonString);
 
-  if (move == 'w'){
-    dirNormal();
-    ledcWrite(PWMA, throttle);
-    ledcWrite(PWMB, throttle);
+    throt_a = cmd["mota_speed"];
+    throt_b = cmd["motb_speed"];
 
-  }
-  if (move == 's'){
-    dirInversed();
-    ledcWrite(PWMA, throttle);
-    ledcWrite(PWMB, throttle);
-
-  }
-  if (move == 'a'){
-    spinNormal();
-    ledcWrite(PWMA, throttle);
-    ledcWrite(PWMB, throttle);
-
-  }
-  if (move == 'd'){
-    spinInversed();
-    ledcWrite(PWMA, throttle);
-    ledcWrite(PWMB, throttle);
-    
-  }
-  if (move == ','){
-    if (throttle > min_throttle){
-      throttle = throttle - 10;
-      Serial.println("Accel");
-    }
-  }
-  if (move == '.'){
-    if (throttle < max_throttle){
-      throttle = throttle + 10;
-      Serial.println("Deccel");
+    bool status = setMotors(throt_a, throt_b);
+    if (status == true){
+      Serial.println("Throttle error: invalid value sent!");
     }
   }
 
   delay(500);
-  ledcWrite(PWMA, 0);
-  ledcWrite(PWMB, 0);
+  stopMotors();
 
 }
