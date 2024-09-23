@@ -27,15 +27,16 @@ def send_motion(mota_speed, motb_speed):
 
 def main():
     global throttle_level, throttle_min, throttle_max
+    throttle_inv = -throttle_level
     while True:
         if keyboard.is_pressed('w'):
             send_motion(throttle_level, throttle_level)  # Forward
         elif keyboard.is_pressed('a'):
-            send_motion(-150, 150)  # Left
+            send_motion(throttle_inv, throttle_level)  # Left
         elif keyboard.is_pressed('s'):
-            send_motion(-150, -150)  # Reverse
+            send_motion(throttle_inv, throttle_inv)  # Reverse
         elif keyboard.is_pressed('d'):
-            send_motion(150, -150)  # Right
+            send_motion(throttle_level, throttle_inv)  # Right
         elif keyboard.is_pressed(','):
             if throttle_level > throttle_min:
                 throttle_level = throttle_level - 10
