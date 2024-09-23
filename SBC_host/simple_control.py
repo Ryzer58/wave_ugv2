@@ -8,7 +8,13 @@ throttle_min = 70
 throttle_max = 255
 
 # Initialize serial connection to SBC
-ser = serial.Serial('/dev/ttyUSB0', 115200)
+
+# Intialize serial communication on Raspberry PI (Disable bluetooth first on newer models)
+ser = serial.Serial('/dev/ttyAMA0', 115200)
+
+# Intialize serial communication on Pcduino (Enable overlay in Armbian overlays)
+#ser = serial.Serial('/dev/ttyS2', 115200)
+
 
 def send_motion(mota_speed, motb_speed):
     cmd = {
