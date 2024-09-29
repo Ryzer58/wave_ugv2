@@ -9,20 +9,20 @@ throttle_max = 255
 
 valid_keys = {'w', 'a', 's', 'd', ',','.'}
 
-# Initialize serial connection to SBC
+# Initialize serial connection to SBC using the corresponding serial device
 
-# Intialize serial communication on Raspberry PI (Disable bluetooth first on newer models)
+# Raspberry PI (Bluetooth should be disabled on the Pi 3 and Pi4) remember to enable in raspi-config
 ser = serial.Serial('/dev/ttyAMA0', 115200)
 
-# Intialize serial communication on Pcduino (Enable overlay in Armbian overlays)
+# Intialize serial communication on Pcduino, enable overlay in armbian-config 
 #ser = serial.Serial('/dev/ttyS2', 115200)
 
 
 def send_motion(mota_speed, motb_speed):
     cmd = {
-        "Motion": 'motors',
-        "mota_speed": mota_speed,
-        "motb_speed": motb_speed
+        "Motion": 'm',
+        "mota": mota_speed,
+        "motb": motb_speed
     }
     json_command = json.dumps(cmd)
     ser.write(json_command.encode('utf-8'))
