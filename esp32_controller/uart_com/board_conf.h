@@ -1,16 +1,21 @@
-/*  Configuration of Waveshare general driver for robotics board based on the schematics and probing using i2ctools on the Rasperry Pi it forms the 
- *  heart of the Waveshare UGV01 abd UGV02 kit. Onboard is a handful of sensors and the ability to interact with the Raspberry Pi and similiar 
- *  boards that adopt the Pi form factor. The i2c header is only for connecting an oled display module but in theory could be used for connecting
- *  other i2c devices. Not currently included are ports for connecting a certain type of serial bus servo. There is a Lidar connection but this 
- *  appears to phyiscally seperated from the main ESP32 controller, merely acting as a serial to usb c adapter.
+/*  Waveshare general driver for robots board:
+ *  
+ *  This configuration file is based on information obtained form the schematics and using i2ctools on the Rasperry Pi to probe the bus. It can be
+ *  used as a standalone board but also forms the heart of the Waveshare UGV01 abd UGV02 kit. The Microcontroller is the ESP32-WROOM-UE which 
+ *  features an external antenna mounted on top of the UGV chasis. Onboard is a handful of sensors and a Pi compatible header to interact with the 
+ *  Raspberry Pi and any other boards that adopt the same pinout. The central USB C port is an addtional means of interfacing and the primary means
+ *  of programming the ESP32. The other USB C appears to be only routed to lidar input, acting in isolation from the rest of the control board.
+ *  The i2c header currently only provides a way of connecting the oled display module that is inegrated into the UGV chasis although it should work
+ *  other i2c devices so long as it supports 3v3 operation. The board can handle a maximum of 16V and regulates it down to 5V at 5A which is more 
+ *  than sufficient for also powering the Raspberry Pi from.
  *
  */
 
- /* Motor - A single motor IC with two driver channels. To provide a total of 4 motors each channel has two motors paralled together 
-  * There are two 6 pin headers that share the same motor connections plus additonal IO, these are for motors that include an encoder.
-  * For each of the control pins we will refer to it as the driver direction (DD) for each channel. If not using motors with an encoder
-  * then the encoder pins should be disabled.
-  */
+/* Motor - A single motor IC with two driver channels. To provide a total of 4 motors each channel has two motors paralled together 
+ * There are two 6 pin headers that share the same motor connections as the 4 two pin headers plus additonal IO for reading encoder 
+ * pulses. For each of the control pins responsible for setting the motor direction, we will refer to it as the driver direction (DD)
+ * for each channel. If using encoderless motors, then we can save pins for other use cases by disabling encoder assignment 
+ */
 #define PWMA 25         
 #define DDA1 21
 #define DDA2 17
@@ -26,7 +31,7 @@
 
 /* Communication - Either UART or I2C are supported by the Raspberry Pi compatible pin header. Note that if communicating via I2C, all the sensors
  * available on the controller board area also attached to the I2C bus therefore if undertaking this route the SBC will taken on the extra overhead
- * of managing the sensors in additon to the esp32.nIt will be more straightforwared to talk to the SBC by UART. UART uses the default pin mapping
+ * of managing the sensors in additon to the esp32. It will be more straightforwared to talk to the SBC by UART. UART uses the default pin mapping
  * but I2C uses a custom mapping as defined below 
  */
 #define COMM_SDA 32
@@ -53,10 +58,15 @@
 
 /* Pressure/Temperature - A BMP280 present in the schematics but not used the ugv base demo code. Seperate testing confirms that this does indeed work
  * however the reported temperature did seem a bit high. Prehaps the Radiant heat from the Raspberry Pi is skewing the reading. Further invvestigation
- * is needed.
+ * is needed.ervo bus signal
  */
 // #define BMP_ADDR 0x70
 
+/* Servo serial bus - There are two 3 pin headers which can allows numerous compatible servos to be chained together. An adapter ic takes the serial input
+ * and converts to servo bus. It is also possible to recieve feedback from the servos.
+ */
+// #define SER_TX 18
+// #define SER_RX 19
 
 /* General GPIO - A single row male pin header Located in the centre of the control board, enables interfacing with a select number of GPIO. Note that
  * GPIO 16 and GPIO 27 cannot be used if using motors with an embedded encoder. The ESP32 operates at 3v3 logic as well. 
@@ -65,4 +75,6 @@
 // #define GPIO1 5
 // #define GPIO2 16
 // #define GPIO3 27
+
+/* SD card holder - Todo */
 
