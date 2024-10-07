@@ -51,9 +51,9 @@
  * but better than nothing. To prevent any cell from dropping below voltage and causing an unexpect shutdown we need to set a safety margin at which to
  * trigger a shutdown alert. The UPS module does feature under voltage cut of to protect the cells from going to low however this should not be relied on 
  */
-// #define INA219_ADDR 0X42
-// #define BATT_LOW 10.5
-// #define BATT_CRTC 10.2
+#define INA219_ADDR 0x42
+#define BATT_LOW 10.6
+#define BATT_CRTC 10.3
 
 
 /* Pressure/Temperature - A BMP280 present in the schematics but not used the ugv base demo code. Seperate testing confirms that this does indeed work
