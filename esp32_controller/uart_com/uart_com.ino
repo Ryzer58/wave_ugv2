@@ -1,6 +1,8 @@
+
 #include "board_conf.h"
+#include "oled_disp.h"
+//#include "power_sys.h"
 #include <ArduinoJson.h>
-#include <INA219_WE.h>
 
 const uint8_t resolution = 8;
 
@@ -19,10 +21,6 @@ unsigned long fetch_time;
 //unsigned long prev_rtime;
 unsigned long sample_rate = 3000;
 unsigned long last_sampled;
-
-
-
-INA219_WE ina219 = INA219_WE(INA219_ADDR);
 
 void initMotors(){
   pinMode(DDA1, OUTPUT);
@@ -51,6 +49,13 @@ int initDevices(){
     ina219.setBusRange(BRNG_16);
     ina219.setShuntSizeInOhms(0.01);
   }
+
+  if(!display.begin(SSD1306_SWITCHCAPVCC, DISP_ADDR)){
+    error_stat = 2;
+  }
+
+  display.clearDisplay();
+  display.display();
 
   return error_stat;
 }
@@ -121,35 +126,7 @@ void stopMotors(){
   ledcWrite(PWMB, 0);
 }
 
-void ina219Info(){
-  float shuntVoltage_mV = 0.0;
-  float loadVoltage_V = 0.0;
-  float busVoltage_V = 0.0;
-  float current_mA = 0.0;
-  float power_mW = 0.0; 
-  bool ina219_overflow = false;
 
-  shuntVoltage_mV = ina219.getShuntVoltage_mV();
-  busVoltage_V = ina219.getBusVoltage_V();
-  current_mA = ina219.getCurrent_mA();
-  power_mW = ina219.getBusPower();
-  loadVoltage_V  = busVoltage_V + (shuntVoltage_mV/1000);
-  ina219_overflow = ina219.getOverflow();
-
-  Serial.print("Shunt Voltage [mV]: "); Serial.println(shuntVoltage_mV);
-  Serial.print("Bus Voltage [V]: "); Serial.println(busVoltage_V);
-  Serial.print("Load Voltage [V]: "); Serial.println(loadVoltage_V);
-  Serial.print("Current[mA]: "); Serial.println(current_mA);
-  Serial.print("Bus Power [mW]: "); Serial.println(power_mW);
-  if(!ina219_overflow){
-    Serial.println("Values OK - no overflow");
-  }
-  else{
-    Serial.println("Overflow! Choose higher PGAIN");
-  }
-  Serial.println();
-
-}
 
 void setup() {
   
@@ -161,12 +138,19 @@ void setup() {
     Serial.print("Error configuring ");
     
     if (board_status == 1){
-      Serial.print("INA219");
+      Serial.println("INA219");
+    }
+
+    if (board_status == 2){
+      Serial.println("SSD1306");
     }
   }
 }
 
 void loop() {
+    
+    powerData ugvStatus;
+
     if(Serial.available() > 0){
       String jsonString = Serial.readString();
       StaticJsonDocument<200> cmd;
@@ -179,15 +163,15 @@ void loop() {
       if (status == true){
         Serial.println("Throttle error: value out of range!");
       }
+    }
       
     fetch_time = millis();
     if(fetch_time - last_sampled >= sample_rate){
-      ina219Info();
+      ina219Info(&ugvStatus);
+      displayPowerData(&ugvStatus);
       last_sampled = fetch_time;
     }
-    
-  }
 
-  delay(500);
-  stopMotors();
+    delay(500);
+    stopMotors();
 }
