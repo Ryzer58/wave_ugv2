@@ -77,4 +77,8 @@
 // #define GPIO3 27
 
 /* SD card holder - Todo */
+//#define SD-MISO 19
+//#define SD_MOSI 23
+//#define SD_CLK 18
+//#define SD_CS 5
 
