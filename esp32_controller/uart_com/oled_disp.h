@@ -15,12 +15,14 @@
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-void testDisplay(){
+void bootScreen(){
   display.clearDisplay();
-  
   display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.print(F("UGV control: V0.2"));
   display.setCursor(0, 10);
-  display.println("Hello, world!");
+  display.print(F("Waiting for connection"));
   display.display();
 
 }
@@ -34,14 +36,12 @@ void displayPowerData(powerData *data){
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0, 0);
-  display.print(F("UGV control V0.2"));
-  display.setCursor(0, 10);
   display.print(F("volts:"));
-  display.setCursor(80,10);
+  display.setCursor(80,0);
   display.print(v_supply);
-  display.setCursor(0, 20);
+  display.setCursor(0, 10);
   display.print(F("Current(mA):"));
-  display.setCursor(75,20);
+  display.setCursor(75,10);
   display.print(curr_supply);
   display.display();
 
