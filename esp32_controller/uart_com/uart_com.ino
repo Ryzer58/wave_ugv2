@@ -2,6 +2,7 @@
 #include "board_conf.h"
 #include "oled_disp.h"
 //#include "power_sys.h"
+
 #include <ArduinoJson.h>
 
 const uint8_t resolution = 8;
@@ -15,10 +16,17 @@ int throttle_min = 70;
 int throttle_max = 250; 
 int throt_a;
 int throt_b;
+bool motion;
+
+const byte bufferSize = 256;
+char inboundBuffer[bufferSize];
+bool newData = false;
+
+// Todo outbound buffer
 
 unsigned long fetch_time;
-//unsigned long run_time = 1000;
-//unsigned long prev_rtime;
+unsigned long run_time = 1000;
+unsigned long last_run;
 unsigned long sample_rate = 3000;
 unsigned long last_sampled;
 
@@ -32,7 +40,6 @@ void initMotors(){
 
   ledcAttachChannel(PWMA, freq, resolution, channel_A);
   ledcAttachChannel(PWMB, freq, resolution, channel_B);
-
 }
 
 int initDevices(){
@@ -54,10 +61,28 @@ int initDevices(){
     error_stat = 2;
   }
 
-  display.clearDisplay();
-  display.display();
+  else{
+    display.clearDisplay();
+    display.display();
+  }
+
+  /* Todo implement bmp280 next */
 
   return error_stat;
+}
+
+/*
+ * The I2C header connection remains physically connected to the I2C line even if not proactively as a mean of communication. When
+ * the Raspberry's pins are configured in GPIO mode, then gpio 3 can be used to 'wake' the Raspberry Pi when being pulled low due
+ * to how the underlying hardware works. This means that background occuring on the I2C bus can cause the Pi to be rebooted after
+ * beings instructed to shutdown. On Raspberry Pi's that feature an eeprom an easy work around it is to simple disable this 
+ * behavior in the configuration settings. A prefered approuch as attempted below would be to instead disable all I2C communication
+ * on the ESP32 via an instruction before the Raspberry Pi commences shutdown.
+ *
+ */
+int deactivateDevices(){
+  ina219.powerDown();
+  Wire.end();
 }
 
 bool setMotors(int mota, int motb){
@@ -126,8 +151,6 @@ void stopMotors(){
   ledcWrite(PWMB, 0);
 }
 
-
-
 void setup() {
   
   Serial.begin(115200);
@@ -145,33 +168,97 @@ void setup() {
       Serial.println("SSD1306");
     }
   }
+
+  else {
+    bootScreen();
+  }
 }
 
 void loop() {
     
-    powerData ugvStatus;
+  powerData ugvStatus;
 
-    if(Serial.available() > 0){
-      String jsonString = Serial.readString();
-      StaticJsonDocument<200> cmd;
-      deserializeJson(cmd, jsonString);
+  fetchSerial();
+  processData();
 
+  fetch_time = millis();
+  if(fetch_time - last_sampled >= sample_rate){
+    ina219Info(&ugvStatus);
+    displayPowerData(&ugvStatus);
+    last_sampled = fetch_time;
+  }
+
+  if (motion == true){
+    if(fetch_time - last_run >= run_time){
+      stopMotors();
+      last_run = fetch_time;
+      motion = false;
+    }
+  }
+}
+
+void fetchSerial(){
+  static byte ndx = 0;
+  char endpoint = '\n';
+  char rc;
+
+  while(Serial.available() > 0 && newData == false){
+    rc = Serial.read();
+
+    if (rc != endpoint){
+      inboundBuffer[ndx] = rc;
+      ndx++;
+
+      if (ndx >= bufferSize){
+        ndx = bufferSize -1;
+      }
+    } 
+
+    else {
+      inboundBuffer[ndx] = '\0';
+      ndx = 0;
+      newData = true;
+    } 
+  }
+}
+
+void processData(){
+  if (newData == true){
+
+    StaticJsonDocument<bufferSize> cmd;
+    DeserializationError error  = deserializeJson(cmd, inboundBuffer);
+
+    if(error){
+      Serial.print("Failed to parse JSON: ");
+      Serial.println(error.c_str());
+      return;
+    }
+
+    const char* command = cmd["comd"];
+      
+    if(strcmp(command,"m") == 0){
+        
       throt_a = cmd["mota"];
       throt_b = cmd["motb"];
-
-      bool status = setMotors(throt_a, throt_b);
-      if (status == true){
+      bool rangeErr = setMotors(throt_a, throt_b);
+      if (rangeErr == true){
         Serial.println("Throttle error: value out of range!");
       }
-    }
-      
-    fetch_time = millis();
-    if(fetch_time - last_sampled >= sample_rate){
-      ina219Info(&ugvStatus);
-      displayPowerData(&ugvStatus);
-      last_sampled = fetch_time;
+
+      else {
+        motion = true;
+      }
     }
 
-    delay(500);
-    stopMotors();
+    else if(strcmp(command,"p") == 0){
+      deactivateDevices();
+      Serial.println("okay to shutdown!");
+    }
+
+    else {
+      Serial.println("Error operation not supported");
+    }
+
+    /* TODO - Implement further functionality such as request sensor data */
+  }
 }
