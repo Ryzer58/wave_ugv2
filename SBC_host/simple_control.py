@@ -1,31 +1,33 @@
-import serial
+#import serial
 import json
 import time
 import keyboard
 
 throttle_level = 100
 throttle_min = 70
-throttle_max = 255
+throttle_max = 250
 
 valid_keys = {'w', 'a', 's', 'd', ',','.'}
 
 # Initialize serial connection to SBC using the corresponding serial device
 
 # Raspberry PI (Bluetooth should be disabled on the Pi 3 and Pi4) remember to enable in raspi-config
-ser = serial.Serial('/dev/ttyAMA0', 115200)
+#ser = serial.Serial('/dev/ttyAMA0', 115200)
 
 # Intialize serial communication on Pcduino, enable overlay in armbian-config 
-#ser = serial.Serial('/dev/ttyS2', 115200)
+# ser = serial.Serial('/dev/ttyS2', 115200)
 
 
 def send_motion(mota_speed, motb_speed):
     cmd = {
-        "Motion": 'm',
+        "comd":"m",
         "mota": mota_speed,
         "motb": motb_speed
     }
     json_command = json.dumps(cmd)
-    ser.write(json_command.encode('utf-8'))
+    json_command = json_command + '\0'
+    print(json_command)
+    #ser.write(json_command.encode('utf-8'))
 
 
 def key_handler(key):
