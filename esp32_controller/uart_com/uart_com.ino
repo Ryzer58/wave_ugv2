@@ -1,34 +1,37 @@
 
 #include "board_conf.h"
-#include "oled_disp.h"
+//#include "oled_disp.h"
 //#include "power_sys.h"
+//#include <esp_timer.h>
 
 #include <ArduinoJson.h>
 
 const uint8_t resolution = 8;
 
-int freq = 100000;
-int channel_A = 0;
-int channel_B = 1;
+int freq = 40000;
 
 int throttle = 140;
 int throttle_min = 70;
 int throttle_max = 250; 
 int throt_a;
 int throt_b;
-bool motion;
+bool motion = false;
+//bool active = true;
+unsigned long motion_counter;
 
-const byte bufferSize = 256;
+const byte bufferSize = 64;
 char inboundBuffer[bufferSize];
 bool newData = false;
+bool start;
 
 // Todo outbound buffer
 
-unsigned long fetch_time;
-unsigned long run_time = 1000;
+//unsigned long fetch_time;
+const long run_time = 2000;
 unsigned long last_run;
-unsigned long sample_rate = 3000;
-unsigned long last_sampled;
+const long sample_rate = 5000;
+//unsigned long last_sampled;
+//const long check_interval = 100;
 
 void initMotors(){
   pinMode(DDA1, OUTPUT);
@@ -38,16 +41,18 @@ void initMotors(){
   pinMode(DDB2, OUTPUT);
   pinMode(PWMB, OUTPUT);
 
-  ledcAttachChannel(PWMA, freq, resolution, channel_A);
-  ledcAttachChannel(PWMB, freq, resolution, channel_B);
+  ledcAttach(PWMA, freq, resolution);
+  ledcAttach(PWMB, freq, resolution);
 }
 
-int initDevices(){
+/*
+int initBus(){
   
-  int error_stat;
+  int error_stat = 0;
   Wire.setPins(COMM_SDA, COMM_SCL);
   Wire.begin();
 
+  delay(50); // Delay startup otherwise INA219 does not appear to register correctly
   if(!ina219.init()){
     error_stat = 1;
   }
@@ -66,10 +71,12 @@ int initDevices(){
     display.display();
   }
 
-  /* Todo implement bmp280 next */
+  // Todo implement bmp280 next
 
   return error_stat;
 }
+
+*/
 
 /*
  * The I2C header connection remains physically connected to the I2C line even if not proactively as a mean of communication. When
@@ -80,81 +87,78 @@ int initDevices(){
  * on the ESP32 via an instruction before the Raspberry Pi commences shutdown.
  *
  */
-int deactivateDevices(){
+
+/*
+int deactivateBus(){
   ina219.powerDown();
+  delay(50); // Wait for the INA219 to shutdown before disabling the bus
   Wire.end();
+  delay(50);
+  return 0;
 }
+*/
 
 bool setMotors(int mota, int motb){
 
-  bool throttle_error = false;
-  if (mota > 0) {
-    
-    if (mota <= throttle_max) {
-      digitalWrite(DDA1, LOW); //Direction is controlled by whatever pin is set high
-      digitalWrite(DDA2, HIGH);
-    }
+  bool throttle_err = false;
+  int mota_val;
+  int motb_val;
 
-    else {
-      throttle_error = true;
-    }
+  if(mota > 0){
+    digitalWrite(DDA1, LOW); //Direction is controlled by whatever pin is set high
+    digitalWrite(DDA2, HIGH);
+    //Serial.println("Forward");
   }
 
   else{
-    int rev_max = -throttle_max;
-    
-    if (mota > rev_max){
-      digitalWrite(DDA1, HIGH);
-      digitalWrite(DDA2, LOW);
-    }
-
-    else {
-      throttle_error = true;
-    }
+    digitalWrite(DDA1, HIGH);
+    digitalWrite(DDA2, LOW);
   }
 
-  if (motb > 0) {
-    
-    if (motb <= throttle_max){
-      digitalWrite(DDB1, LOW);
-      digitalWrite(DDB2, HIGH);
-    }
-
-    else {
-      throttle_error = true;
-    }
+  if(motb > 0){
+    digitalWrite(DDB1, LOW); 
+    digitalWrite(DDB2, HIGH);
   }
 
   else{
-    int rev_max = -throttle_max;
+    digitalWrite(DDB1, HIGH);
+    digitalWrite(DDB2, LOW);
+  }
+
+  mota_val = abs(mota);
+  motb_val = abs(motb);
+
+  if(mota >= throttle_min && mota <= throttle_max && motb >= throttle_min && motb <= throttle_max){
+    ledcWrite(PWMA, mota_val);
+    Serial.print("Motor A: ");
+    Serial.println(mota_val);
+
+    ledcWrite(PWMB, motb_val);
+    Serial.print("Motor B: ");
+    Serial.println(motb_val);
+
+    motion = true;
+    start = true;
+  }
+
+  else{
+    throttle_err = true;
+  }
     
-    if (motb > rev_max){
-      digitalWrite(DDB1, HIGH);
-      digitalWrite(DDB2, LOW);
-    }
-
-    else {
-      throttle_error = true;
-    }
-  }
-
-  if (!throttle_error){
-    ledcWrite(PWMA, mota);
-    ledcWrite(PWMB, motb);
-  }
-  
-  return throttle_error;
+  return throttle_err;
 }
 
 void stopMotors(){
   ledcWrite(PWMA, 0);
   ledcWrite(PWMB, 0);
+  Serial.println("Stopping motors!");
 }
 
 void setup() {
   
   Serial.begin(115200);
   initMotors();
+  /*
   int board_status = initDevices();
   
   if (board_status > 0){
@@ -171,30 +175,63 @@ void setup() {
 
   else {
     bootScreen();
-  }
+  } */
+
+  motion = 0;
+
 }
 
 void loop() {
     
-  powerData ugvStatus;
+  //powerData ugvStatus;
 
   fetchSerial();
   processData();
 
-  fetch_time = millis();
-  if(fetch_time - last_sampled >= sample_rate){
-    ina219Info(&ugvStatus);
-    displayPowerData(&ugvStatus);
-    last_sampled = fetch_time;
-  }
-
-  if (motion == true){
-    if(fetch_time - last_run >= run_time){
+  /* Does not preform as expected */
+  
+  if (motion){
+    motion_counter++;
+    
+    if(start == true){
+      Serial.print("start: ");
+      Serial.println(motion_counter);
+      start = false;
+    }
+    if(motion_counter >= run_time){
+      Serial.print("stop at ");
+      Serial.println(last_run);
+      motion_counter = 0;
       stopMotors();
-      last_run = fetch_time;
       motion = false;
     }
+    Serial.println(motion_counter);
   }
+
+/*
+  if (active == true){
+    unsigned long health_timer = millis();
+    if(health_timer - last_sampled >= sample_rate){
+      ina219Get(&ugvStatus);
+      displayPowerData(&ugvStatus);
+      last_sampled = health_timer;
+    }
+  }
+
+*/
+  /*
+  if(active == true){
+    delay(3000);
+    ina219Get(&ugvStatus);
+    displayPowerData(&ugvStatus);
+  }
+
+  if(motion == true){
+    delay(2000);
+    stopMotors();
+    motion = false;
+  } */
+
 }
 
 void fetchSerial(){
@@ -202,7 +239,7 @@ void fetchSerial(){
   char endpoint = '\n';
   char rc;
 
-  while(Serial.available() > 0 && newData == false){
+  if(Serial.available() > 0 && newData == false){
     rc = Serial.read();
 
     if (rc != endpoint){
@@ -210,7 +247,7 @@ void fetchSerial(){
       ndx++;
 
       if (ndx >= bufferSize){
-        ndx = bufferSize -1;
+        ndx = bufferSize - 1;
       }
     } 
 
@@ -223,42 +260,47 @@ void fetchSerial(){
 }
 
 void processData(){
+  bool rangeErr;
   if (newData == true){
 
     StaticJsonDocument<bufferSize> cmd;
-    DeserializationError error  = deserializeJson(cmd, inboundBuffer);
+    DeserializationError error  = deserializeJson(cmd, inboundBuffer, bufferSize);
 
     if(error){
-      Serial.print("Failed to parse JSON: ");
+      Serial.print("deserializeJson() failed: ");
       Serial.println(error.c_str());
+      newData = false;
       return;
     }
 
     const char* command = cmd["comd"];
-      
-    if(strcmp(command,"m") == 0){
-        
-      throt_a = cmd["mota"];
-      throt_b = cmd["motb"];
-      bool rangeErr = setMotors(throt_a, throt_b);
-      if (rangeErr == true){
-        Serial.println("Throttle error: value out of range!");
-      }
+    
+    switch(command[0]){
 
-      else {
-        motion = true;
-      }
-    }
+      case 'm': // Motion command - {"comd": "m","mota":100,"motb":100}
+        Serial.println("starting motors: ");
+        throt_a = cmd["mota"];
+        throt_b = cmd["motb"];
+        rangeErr = setMotors(throt_a, throt_b);
+        if (rangeErr == true){
+          Serial.println("Throttle error: value out of range!");
+          motion = false;
+        }
 
-    else if(strcmp(command,"p") == 0){
-      deactivateDevices();
-      Serial.println("okay to shutdown!");
-    }
+        else {
+          motion = true;
+          start = true;
+        }
+        break;
 
-    else {
-      Serial.println("Error operation not supported");
+      case 'p': // Power down command
+        //deactivateDevices();
+        //active = false;
+        Serial.println("okay to shutdown!");
+        break;
     }
 
     /* TODO - Implement further functionality such as request sensor data */
+    newData = false;
   }
 }
