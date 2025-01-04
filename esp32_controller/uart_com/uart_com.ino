@@ -1,9 +1,9 @@
 
 #include "board_conf.h"
-//#include "oled_disp.h"
+#include "oled_disp.h"
 //#include "power_sys.h"
+#include "env.h"
 //#include <esp_timer.h>
-
 #include <ArduinoJson.h>
 
 const uint8_t resolution = 8;
@@ -16,7 +16,7 @@ int throttle_max = 250;
 int throt_a;
 int throt_b;
 bool motion = false;
-//bool active = true;
+bool active = true;
 unsigned long motion_counter;
 
 const byte bufferSize = 64;
@@ -27,10 +27,10 @@ bool start;
 // Todo outbound buffer
 
 //unsigned long fetch_time;
-const long run_time = 2000;
+const long run_time = 2000000;
 unsigned long last_run;
-const long sample_rate = 5000;
-//unsigned long last_sampled;
+signed long sample_rate = 5000;
+unsigned long last_sampled;
 //const long check_interval = 100;
 
 void initMotors(){
@@ -45,7 +45,7 @@ void initMotors(){
   ledcAttach(PWMB, freq, resolution);
 }
 
-/*
+
 int initBus(){
   
   int error_stat = 0;
@@ -62,6 +62,21 @@ int initBus(){
     ina219.setShuntSizeInOhms(0.01);
   }
 
+  unsigned bmp_state;
+  bmp_state = bmp.begin(BMP_ADDR);
+  
+  if(!bmp_state){
+    error_stat = 3;
+  }
+
+  else{
+    bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,     /* Operating Mode. */
+                  Adafruit_BMP280::SAMPLING_X2,     /* Temp. oversampling */
+                  Adafruit_BMP280::SAMPLING_X16,    /* Pressure oversampling */
+                  Adafruit_BMP280::FILTER_X16,      /* Filtering. */
+                  Adafruit_BMP280::STANDBY_MS_500); /* Standby time. */
+  }
+
   if(!display.begin(SSD1306_SWITCHCAPVCC, DISP_ADDR)){
     error_stat = 2;
   }
@@ -71,12 +86,8 @@ int initBus(){
     display.display();
   }
 
-  // Todo implement bmp280 next
-
   return error_stat;
 }
-
-*/
 
 /*
  * The I2C header connection remains physically connected to the I2C line even if not proactively as a mean of communication. When
@@ -88,7 +99,7 @@ int initBus(){
  *
  */
 
-/*
+
 int deactivateBus(){
   ina219.powerDown();
   delay(50); // Wait for the INA219 to shutdown before disabling the bus
@@ -96,7 +107,7 @@ int deactivateBus(){
   delay(50);
   return 0;
 }
-*/
+
 
 bool setMotors(int mota, int motb){
 
@@ -158,8 +169,8 @@ void setup() {
   
   Serial.begin(115200);
   initMotors();
-  /*
-  int board_status = initDevices();
+  
+  uint8_t board_status = initBus();
   
   if (board_status > 0){
     Serial.print("Error configuring ");
@@ -171,19 +182,32 @@ void setup() {
     if (board_status == 2){
       Serial.println("SSD1306");
     }
+
+    if (board_status == 3){
+      Serial.println("BMP280");
+    }
+
+    /* Todo - This can either be 1 or 2 given that there are two physcial components
+    if (board_status == 4){
+      Serial.println("IMU");
+    } */
   }
 
   else {
     bootScreen();
-  } */
+  }
 
   motion = 0;
+  fetchBmp280Data();
+  if(ugv_temp <= 5.00){
+    Serial.println("Warn low temp");
+  }
 
 }
 
 void loop() {
     
-  //powerData ugvStatus;
+  powerData ugvStatus;
 
   fetchSerial();
   processData();
@@ -205,10 +229,8 @@ void loop() {
       stopMotors();
       motion = false;
     }
-    Serial.println(motion_counter);
   }
 
-/*
   if (active == true){
     unsigned long health_timer = millis();
     if(health_timer - last_sampled >= sample_rate){
@@ -218,7 +240,7 @@ void loop() {
     }
   }
 
-*/
+
   /*
   if(active == true){
     delay(3000);
@@ -293,9 +315,18 @@ void processData(){
         }
         break;
 
-      case 'p': // Power down command
-        //deactivateDevices();
-        //active = false;
+      case 'h': // Stop motors
+        stopMotors();
+        break;
+      
+      case 't':
+        fetchBmp280Data();
+        printBmp280Data();
+        break;
+
+      case 'p': // Power down command - consider also adding a delay option
+        deactivateBus();
+        active = false;
         Serial.println("okay to shutdown!");
         break;
     }
