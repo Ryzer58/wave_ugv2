@@ -1,4 +1,11 @@
+#ifndef POWER_SYS_H
+#define POWER_SYS_H
+
 #include <INA219_WE.h>
+
+#define BATT_LOW 10.6
+#define BATT_CRITC 10.3
+#define BATT_NOM 11.1
 
 INA219_WE ina219 = INA219_WE(INA219_ADDR);
 
@@ -36,3 +43,7 @@ void ina219Print(powerData *data){
     Serial.println("Overflow! Choose higher PGAIN");
   }
 }
+
+/* Todo improve on voltage threshold detection */
+
+#endif POWER_SYS_H
