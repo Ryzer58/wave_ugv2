@@ -1,13 +1,15 @@
 /*  Waveshare general driver for robots board:
  *  
- *  This configuration file is based on information obtained form the schematics and using i2ctools on the Rasperry Pi to probe the bus. It can be
- *  used as a standalone board but also forms the heart of the Waveshare UGV01 abd UGV02 kit. The Microcontroller is the ESP32-WROOM-UE which 
- *  features an external antenna mounted on top of the UGV chasis. Onboard is a handful of sensors and a Pi compatible header to interact with the 
- *  Raspberry Pi and any other boards that adopt the same pinout. The central USB C port is an addtional means of interfacing and the primary means
- *  of programming the ESP32. The other USB C appears to be only routed to lidar input, acting in isolation from the rest of the control board.
- *  The i2c header currently only provides a way of connecting the oled display module that is inegrated into the UGV chasis although it should work
- *  other i2c devices so long as it supports 3v3 operation. The board can handle a maximum of 16V and regulates it down to 5V at 5A which is more 
- *  than sufficient for also powering the Raspberry Pi from.
+ * This configuration file is derived form the board schematic and i2ctools on the Rasperry Pi to identify addresses on the bus. The board can be
+ * used as a standalone for any given robotics project but also forms the heart of the Waveshare UGV kits, UGV01, UGV02  and UGV03. The Microcontroller 
+ * is the ESP32-WROOM-UE featuring an external antenna mounted on top of the UGV chasis. Onboard are 4 sensors as identified below and two Pi compatible 
+ * headers to mount the Raspberry Pi or any other board with a Pi compatible pinout. Serial communication to the ESP32 can be direct through the Pi 
+ * header or via the CP2102A to the middle USB C port, which is the only means of programming the ESP32. The outer USB C only appears to be routed to 
+ * the lidar header.
+ * All sensors are communicated with via the i2c bus and an i2c header allows for addtional devices but is currently only used for connecting the oled 
+ * display module inegrated into the UGV chasis. The board can handle a maximum of 16V input and regulates it down to 5V at 5A which is more than 
+ * sufficient to power the Raspberry Pi. This is further regulated down to 3.3V for the ESP and 1.8V for the sensors. There are two interrupt lines
+ * brought out from the primary IMU which do not appear to be mapped anywhere on the ESP.
  *
  *
  * Motor - A single motor IC with two driver channels. To provide a total of 4 motors each channel has two motors paralled together 
@@ -33,16 +35,21 @@
 #endif
 
 /* General GPIO - A single row male pin header Located in the centre of the control board, enables interfacing with a select number of GPIO. Note that
- * GPIO 16 and GPIO 27 cannot be used for gpio if we are using encoded motors. The ESP32 gpio has a logic level of 3v3. 
+ * GPIO 16 and GPIO 27 cannot be used for gpio if we are using encoded motors. The ESP32 gpio has a logic level of 3.3V. 
  */
 #define GPIO0 4
 #define GPIO1 5
  
 
-/* Communication - Either UART or I2C are supported by the Raspberry Pi compatible pin header. Note that if communicating via I2C, all the sensors
- * available on the controller board area also attached to the I2C bus therefore if undertaking this route the SBC will taken on the extra overhead
- * of managing the sensors in additon to the esp32. It will be more straightforwared to talk to the SBC by UART. UART uses the default pin mapping
- * but I2C uses a custom mapping as defined below 
+/* Communication - Either UART or I2C are supported by the Raspberry Pi compatible pin header. For Serial no further configuration is needed as it
+ * adopts the default serial0 pin mapping. I2C in contrast requires using custom pins as defined below and we need to consider that we will also be
+ * communicating with sensors on the same bus. Unfortunately the Pi hardware does not support operating multimaster mode. Note that even if not 
+ * using I2C, the pins remain physically connected to the bus lines via the header. To avoid conflict I2C should be disabled on the Raspberry. 
+ * However when pin 3 is configured in GPIO mode, the underlying hardware enables the Pi to 'wake' from a lower power state when pulled low. This
+ * extends to even when the Pi has been instructed to shutdown. Unfortunately due to the constant connection, the background i2c acitivity will
+ * lead to this mechanism being triggered. On Newer Raspberry Pi models which include an eeprom bootloader an easy work around is to simple disable 
+ * this behavior in the configuration file settings. A prefered approuch as attempted below would be to instead disable all I2C communication
+ * on the ESP32 via an instruction before the Raspberry Pi commences shutdown.
  */
 #define I2C_COMM
 #ifdef I2C_COMM
@@ -52,12 +59,12 @@
 
 
 /* IMU - A combination of the AK09918 and QMI8658c. The QMI8658c is a 6 Dof, gyroscope and an accelerometer while the AK09918 is purely a Magnometer.
- * Currently there are seperate libraries that support the QMI8658c but not yet in conjuction with AK09918. A library is target at slight different 
- * component combination of the AK09918 with another 6 Dof device so it should be possible by using this library as a point of reference along with 
- * reviewing the waveshare source code.
+ * Currently there are seperate libraries that support the QMI8658c but not yet in conjuction with AK09918. The Adafruit ICM20x library features a 
+ * similiar Ak09916 library but instead targeted towards the ICM20948. Regardless this library should provide a good enough base reference to begin
+ * working withe ak09918. Aside from this seedstudio are the only other vendor who use similiar hardware.
  */
-
-#ifdef UGV_GYRO
+//#define UGV_IMU
+#ifdef UGV_IMU
   #define MAG_ADDR 0x0c
   #define GYRO_ADDR 0x6b
 #endif
@@ -88,14 +95,13 @@
  * addressable. An adapter ic takes the serial input and converts the logic into a protocal the servo can understand. These servos support feedback which
  * can be recieved along rx line.
  */
-
 #ifdef SERIAL_SERVO
   #define SER_TX 18
   #define SER_RX 19
 #endif
 
 
-/* SD card holder - Todo */
+/* SD card holder - Micro SD card holder (Todo) */
 
 #ifdef SD_CARD_SLOT
   #define SD_MISO 19
