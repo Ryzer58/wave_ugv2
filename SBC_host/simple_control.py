@@ -1,7 +1,11 @@
+from time import sleep
 import serial
 import json
 import time
-import keyboard
+import sys
+import tty
+import termios
+
 
 throttle_level = 100
 throttle_min = 70
@@ -25,55 +29,89 @@ def send_motion(mota_speed, motb_speed):
         "motb": motb_speed
     }
     json_command = json.dumps(cmd)
-    json_command = json_command + '\0'
+    json_command = json_command + '\n'
     print(json_command)
     ser.write(json_command.encode('utf-8'))
 
+def readchar():
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
 
-def key_handler(key):
-    global throttle_level, throttle_min, throttle_max
-    throttle_inv = -throttle_level
+    try:
+        tty.setraw(sys.stdin.fileno())
+        ch = sys.stdin.read(1)
 
-    if key in valid_keys:
-        if key == 'w':
-            send_motion(throttle_level, throttle_level)  # Forward
-            print("Moving foward")
-        elif key == 'a':
-            send_motion(throttle_inv, throttle_level)  # Left
-            print("Turning left")
-        elif key == 's':
-            send_motion(throttle_inv, throttle_inv)  # Reverse
-            print("Moving in reverse")
-        elif key == 'd':
-            send_motion(throttle_level, throttle_inv)  # Right
-            print("Turning right")
-        elif key == ',':
-            if throttle_level > throttle_min:
-                throttle_level = throttle_level - 10
-                print("Slowing down")
-            else:
-                print("At crawl speed")
-        elif key == '.':
-            if throttle_level < throttle_max:
-                throttle_level = throttle_level + 10
-                print("Speeding up")
-            else:
-                print("At max speed")
-    else:    
-        print("Invalid key,stopping")
-        send_motion(0, 0)  # Stop
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    if ch == '0x03':
+        raise KeyboardInterrupt
+    return ch
 
 
-def main():
+def readKey(getchar_fn=None):
+    getchar = getchar_fn or readchar
+    c1 = getchar()
+    if ord(c1) != 0x1b:
+        return c1
+    c2 = getchar()
+    if ord(c2) != 0x5b:
+        return c2
+    c3 = getchar()
+    return chr(0x10 + ord(c3) - 65) #16=Up, 17=Down, 18=Right, 19=Left arrow
 
 
-    # Listen for key presses
-    keyboard.on_press(lambda e: key_handler(e.name))
-    time.sleep(0.2)
+try:
+    while True:
+        
+        throttle_inv = -throttle_level
+        keyp = readKey()
 
-    # Keep the program running
-    keyboard.wait('esc')
+        if keyp == 'w' or ord(keyp) ==16:
+            send_motion(throttle_level, throttle_level)
+            print('Forward: ' + str(throttle_level))
+
+        elif keyp == 's' or ord(keyp) == 17:
+            send_motion(throttle_inv, throttle_inv)
+            print('Reverse: ' + str(throttle_level))
+            run_time = 3
+            
+        elif keyp == 'd' or ord(keyp) == 18:
+            print('Spinning right ', end=' ') # The IMU is not yet operation so have no point of reference to spin from therefore instead we be rotating for a given point of time
+            send_motion(throttle_level, throttle_inv)
+            print('at' + str(throttle_level))
+
+
+        elif keyp == 'a' or ord(keyp) == 19:
+            print('Spinning left', end=' ')
+            send_motion(throttle_level, throttle_inv)
+            print('at' + str(throttle_level))
             
 
-if __name__ == "__main__":
-    main()
+        elif keyp == '.' or keyp == '>':
+            if throttle_level < throttle_max and throttle_level >= throttle_min:
+                print('Increasing power ', end=' ')
+                throttle_level = throttle_level + 10
+                print('output to ' + str(throttle_level))
+
+            elif throttle_level == 0:
+                 print('Currently idle')
+
+            else:
+                print('Set to max throttle')
+
+
+        elif keyp == ',' or keyp == '<':
+            if throttle_level > throttle_min:
+                print('Decreasing power', end=' ')
+                throttle_level = throttle_level - 10
+                print(' output to ' + str(throttle_level))
+
+            elif throttle_level == 0:
+                 print('Currently idle')
+
+            else:
+                print('Set to min throttle')  
+
+except KeyboardInterrupt:
+    ser.close()
+    sys.exit()
