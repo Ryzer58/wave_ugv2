@@ -15,8 +15,15 @@ typedef struct {
   float volt_bus;
   float current_mA;
   float power_mW;
-  bool overflowing = false;
+  bool pg_overflow = false;
+  bool batt_nom = true;
 } powerData;
+
+void ina219Setup(){
+  ina219.setBusRange(BRNG_16);
+  ina219.setShuntSizeInOhms(0.01);
+  // Todo - need to look into PGAIN values
+}
 
 void ina219Get(powerData *data){                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
   data->volt_shunt = ina219.getShuntVoltage_mV();
@@ -24,8 +31,11 @@ void ina219Get(powerData *data){
   data->current_mA = ina219.getCurrent_mA();
   data->power_mW = ina219.getBusPower();
   data->volt_load  = data->volt_bus + (data->volt_shunt/1000);
-  data->overflowing = ina219.getOverflow();
+  data->pg_overflow = ina219.getOverflow();
 
+  if(data->volt_bus < BATT_NOM){
+    data->batt_nom = false;
+  }
 }
 
 void ina219Print(powerData *data){
@@ -36,7 +46,7 @@ void ina219Print(powerData *data){
   Serial.print("Current[mA]: "); Serial.println(data->current_mA);
   Serial.print("Bus Power [mW]: "); Serial.println(data->power_mW);
   
-  if(!data->overflowing){
+  if(!data->pg_overflow){
     Serial.println("Values OK - no overflow");
   }
   else{

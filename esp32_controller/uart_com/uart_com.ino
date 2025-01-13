@@ -3,7 +3,7 @@
 #include "oled_disp.h"
 //#include "power_sys.h"
 #include "env.h"
-//#include <esp_timer.h>
+#include <esp_timer.h>
 #include <ArduinoJson.h>
 
 const uint8_t resolution = 8;
@@ -17,7 +17,6 @@ int throt_a;
 int throt_b;
 bool motion = false;
 bool active = true;
-unsigned long motion_counter;
 
 const byte bufferSize = 64;
 char inboundBuffer[bufferSize];
@@ -27,11 +26,17 @@ bool start;
 // Todo outbound buffer
 
 //unsigned long fetch_time;
-const long run_time = 2000000;
-unsigned long last_run;
 signed long sample_rate = 5000;
 unsigned long last_sampled;
 //const long check_interval = 100;
+
+hw_timer_t *motion_timer = NULL;
+
+void IRAM_ATTR motion_ISR()
+{
+  stopMotors();
+  motion = false;
+}
 
 void initMotors(){
   pinMode(DDA1, OUTPUT);
@@ -58,8 +63,7 @@ int initBus(){
   }
 
   else{
-    ina219.setBusRange(BRNG_16);
-    ina219.setShuntSizeInOhms(0.01);
+    ina219Setup();
   }
 
   unsigned bmp_state;
@@ -89,20 +93,10 @@ int initBus(){
   return error_stat;
 }
 
-/*
- * The I2C header connection remains physically connected to the I2C line even if not proactively as a mean of communication. When
- * the Raspberry's pins are configured in GPIO mode, then gpio 3 can be used to 'wake' the Raspberry Pi when being pulled low due
- * to how the underlying hardware works. This means that background occuring on the I2C bus can cause the Pi to be rebooted after
- * beings instructed to shutdown. On Raspberry Pi's that feature an eeprom an easy work around it is to simple disable this 
- * behavior in the configuration settings. A prefered approuch as attempted below would be to instead disable all I2C communication
- * on the ESP32 via an instruction before the Raspberry Pi commences shutdown.
- *
- */
-
-
+ /* To avoid accidently restarting the Raspberry Pi when instructed to shutdown, first disable the I2C bus. (See board.conf) */
 int deactivateBus(){
   ina219.powerDown();
-  delay(50); // Wait for the INA219 to shutdown before disabling the bus
+  delay(50); // Wait for the INA219 to shutdown before disabling the bus otherwise the ESP32 seems to crash
   Wire.end();
   delay(50);
   return 0;
@@ -187,7 +181,7 @@ void setup() {
       Serial.println("BMP280");
     }
 
-    /* Todo - This can either be 1 or 2 given that there are two physcial components
+    /* Todo - This can either be considered as 1 unit or 2 units given that there are two physcial components
     if (board_status == 4){
       Serial.println("IMU");
     } */
@@ -215,26 +209,22 @@ void loop() {
   /* Does not preform as expected */
   
   if (motion){
-    motion_counter++;
-    
-    if(start == true){
-      Serial.print("start: ");
-      Serial.println(motion_counter);
-      start = false;
-    }
-    if(motion_counter >= run_time){
-      Serial.print("stop at ");
-      Serial.println(last_run);
-      motion_counter = 0;
-      stopMotors();
-      motion = false;
-    }
+    motion_timer = timerBegin(80000000);
+    timerAttachInterrupt(motion_timer, &motion_ISR);
+    timerAlarm(motion_timer, 2000000, true, 0);
+    //timerStart(motion_timer); 
+  }
+  else{
+    timerStop(motion_timer);
   }
 
   if (active == true){
     unsigned long health_timer = millis();
     if(health_timer - last_sampled >= sample_rate){
       ina219Get(&ugvStatus);
+      if(!ugvStatus.batt_nom){
+        sample_rate = 2000;
+      }
       displayPowerData(&ugvStatus);
       last_sampled = health_timer;
     }
@@ -242,12 +232,6 @@ void loop() {
 
 
   /*
-  if(active == true){
-    delay(3000);
-    ina219Get(&ugvStatus);
-    displayPowerData(&ugvStatus);
-  }
-
   if(motion == true){
     delay(2000);
     stopMotors();
@@ -299,7 +283,7 @@ void processData(){
     
     switch(command[0]){
 
-      case 'm': // Motion command - {"comd": "m","mota":100,"motb":100}
+      case 'm': // Motion command - {"comd":"m","mota":100,"motb":100}
         Serial.println("starting motors: ");
         throt_a = cmd["mota"];
         throt_b = cmd["motb"];
@@ -316,7 +300,7 @@ void processData(){
         break;
 
       case 'h': // Stop motors
-        stopMotors();
+        stopMotors(); 
         break;
       
       case 't':
@@ -328,6 +312,10 @@ void processData(){
         deactivateBus();
         active = false;
         Serial.println("okay to shutdown!");
+        break;
+
+      default:
+        Serial.println("Error invalid input!");
         break;
     }
 
