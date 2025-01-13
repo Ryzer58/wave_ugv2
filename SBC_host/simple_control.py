@@ -24,9 +24,9 @@ ser = serial.Serial('/dev/ttyAMA0', 115200)
 
 def send_motion(mota_speed, motb_speed):
     cmd = {
-        "comd":"m",
-        "mota": mota_speed,
-        "motb": motb_speed
+        "comd": "m",
+        "mota":mota_speed,
+        "motb":motb_speed
     }
     json_command = json.dumps(cmd)
     json_command = json_command + '\n'
@@ -83,7 +83,7 @@ try:
 
         elif keyp == 'a' or ord(keyp) == 19:
             print('Spinning left', end=' ')
-            send_motion(throttle_level, throttle_inv)
+            send_motion(throttle_inv, throttle_level)
             print('at' + str(throttle_level))
             
 
@@ -110,8 +110,21 @@ try:
                  print('Currently idle')
 
             else:
-                print('Set to min throttle')  
+                print('Set to min throttle')
 
-except KeyboardInterrupt:
-    ser.close()
-    sys.exit()
+        elif keyp == 'l':
+            raise Exception("Leaving controller")
+
+        elif keyp == 't':
+            cmd = {
+                "comd": "t",
+            }
+
+except Exception as e:
+    if str(e) == "Leaving controller":
+        print("Leaving controller..")
+    else:
+        print(f"An error occurred: {e}")
+    if ser.isOpen():
+        ser.close()
+    sys.exit(1)
