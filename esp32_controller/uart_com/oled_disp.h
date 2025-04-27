@@ -9,7 +9,6 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Wire.h>
-#include "power_sys.h"
 
 
 #define DISP_ADDR   0x3c
@@ -18,6 +17,19 @@
 #define OLED_RESET    -1
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+bool probeSSD1306(int dev){
+  if(!display.begin(SSD1306_SWITCHCAPVCC, dev)){
+    return false;
+  }
+
+  else{
+    display.clearDisplay();
+    display.display();
+    return true;
+  }
+}
+
 
 void bootScreen(){
   display.clearDisplay();
@@ -34,10 +46,7 @@ void bootScreen(){
 
 }
 
-void displayPowerData(powerData *data){
-
-  float v_supply = data->volt_bus;
-  float curr_supply = data->current_mA;
+void displayPowerData(float v_supply, float curr_supply){
   
   display.clearDisplay();
   display.setTextSize(1);
@@ -54,7 +63,22 @@ void displayPowerData(powerData *data){
 
 }
 
-void clearRow(int row){
+void displayWriteRow(int row){
+  int cursor_val = 0;
+  if (row == 1){
+    cursor_val = 8;
+  }
+
+  else if (row == 2){
+    cursor_val = 16;
+  }
+
+  else if (row == 3){
+    cursor_val = 24;
+  }
+}
+
+void displayClearRow(int row){
   int cursor_val = 0;
   if (row == 1){
     cursor_val = 8;
@@ -71,6 +95,5 @@ void clearRow(int row){
   display.setCursor(0, cursor_val);
   display.print(F("                    "));
 }
- /* Todo - consider the best approuch for integrating temperature sensor data into our display data*/
 
 #endif

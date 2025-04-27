@@ -9,7 +9,8 @@
 
 INA219_WE ina219 = INA219_WE(INA219_ADDR);
 
-typedef struct {
+
+typedef struct ugvPower {
   float volt_shunt;
   float volt_load;
   float volt_bus;
@@ -17,15 +18,23 @@ typedef struct {
   float power_mW;
   bool pg_overflow = false;
   bool batt_nom = true;
-} powerData;
+};
 
-void ina219Setup(){
-  ina219.setBusRange(BRNG_16);
-  ina219.setShuntSizeInOhms(0.01);
-  // Todo - need to look into PGAIN values
+bool probeIna219(){
+  if(!ina219.init()){
+    return false;
+  }
+  
+  else{
+    ina219.setADCMode(BIT_MODE_9);
+    ina219.setBusRange(BRNG_16);
+    ina219.setPGain(PG_320);
+    ina219.setShuntSizeInOhms(0.01);
+    return true;
+  }
 }
 
-void ina219Get(powerData *data){                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
+void ina219Get(struct ugvPower *data){                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
   data->volt_shunt = ina219.getShuntVoltage_mV();
   data->volt_bus = ina219.getBusVoltage_V();
   data->current_mA = ina219.getCurrent_mA();
@@ -38,7 +47,7 @@ void ina219Get(powerData *data){
   }
 }
 
-void ina219Print(powerData *data){
+void ina219Print(struct ugvPower *data){
 
   Serial.print("Shunt Voltage [mV]: "); Serial.println(data->volt_shunt);
   Serial.print("Bus Voltage [V]: "); Serial.println(data->volt_bus);
