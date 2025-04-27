@@ -1,42 +1,41 @@
 
 #include "board_conf.h"
+#include "power_sys.h"
 #include "oled_disp.h"
-//#include "power_sys.h"
 #include "env.h"
-#include <esp_timer.h>
 #include <ArduinoJson.h>
 
+/* Motors Configuration data */
 const uint8_t resolution = 8;
-
 int freq = 40000;
-
 int throttle = 140;
 int throttle_min = 70;
 int throttle_max = 250; 
 int throt_a;
 int throt_b;
-bool motion = false;
-bool active = true;
+bool mot_run = false;
 
+/* Communication buffers - for now just focus on the incoming buffer as serial print statements are easier to read
+ * but later data should also be returned in json format to be processed on the Raspberru Pi other SBC.
+ */
 const byte bufferSize = 64;
 char inboundBuffer[bufferSize];
 bool newData = false;
 bool start;
 
-// Todo outbound buffer
+/* outboundBuffer - Todo */
 
-//unsigned long fetch_time;
-signed long sample_rate = 5000;
-unsigned long last_sampled;
-//const long check_interval = 100;
+bool bus_active = true;
 
-hw_timer_t *motion_timer = NULL;
+/* UGV device timings - For Now use millis() as our current scheduling frane  */
 
-void IRAM_ATTR motion_ISR()
-{
-  stopMotors();
-  motion = false;
-}
+const long motor_timeout = 5000;
+const long time_to_read = 100;
+
+unsigned long sample_rate = 5000;
+unsigned long start_time = 0;
+unsigned long last_check = 0;
+unsigned long last_sampled = 0;
 
 void initMotors(){
   pinMode(DDA1, OUTPUT);
@@ -48,49 +47,7 @@ void initMotors(){
 
   ledcAttach(PWMA, freq, resolution);
   ledcAttach(PWMB, freq, resolution);
-}
-
-
-int initBus(){
   
-  int error_stat = 0;
-  Wire.setPins(COMM_SDA, COMM_SCL);
-  Wire.begin();
-
-  delay(50); // Delay startup otherwise INA219 does not appear to register correctly
-  if(!ina219.init()){
-    error_stat = 1;
-  }
-
-  else{
-    ina219Setup();
-  }
-
-  unsigned bmp_state;
-  bmp_state = bmp.begin(BMP_ADDR);
-  
-  if(!bmp_state){
-    error_stat = 3;
-  }
-
-  else{
-    bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,     /* Operating Mode. */
-                  Adafruit_BMP280::SAMPLING_X2,     /* Temp. oversampling */
-                  Adafruit_BMP280::SAMPLING_X16,    /* Pressure oversampling */
-                  Adafruit_BMP280::FILTER_X16,      /* Filtering. */
-                  Adafruit_BMP280::STANDBY_MS_500); /* Standby time. */
-  }
-
-  if(!display.begin(SSD1306_SWITCHCAPVCC, DISP_ADDR)){
-    error_stat = 2;
-  }
-
-  else{
-    display.clearDisplay();
-    display.display();
-  }
-
-  return error_stat;
 }
 
  /* To avoid accidently restarting the Raspberry Pi when instructed to shutdown, first disable the I2C bus. (See board.conf) */
@@ -101,7 +58,6 @@ int deactivateBus(){
   delay(50);
   return 0;
 }
-
 
 bool setMotors(int mota, int motb){
 
@@ -134,20 +90,23 @@ bool setMotors(int mota, int motb){
   motb_val = abs(motb);
 
   if(mota >= throttle_min && mota <= throttle_max && motb >= throttle_min && motb <= throttle_max){
+    
     ledcWrite(PWMA, mota_val);
-    Serial.print("Motor A: ");
-    Serial.println(mota_val);
-
     ledcWrite(PWMB, motb_val);
-    Serial.print("Motor B: ");
-    Serial.println(motb_val);
+    
+    Serial.print("Motors - (A ");
+    Serial.print(mota_val);
+    Serial.print(",B: ");
+    Serial.print(motb_val);
+    Serial.println(" )");
 
-    motion = true;
-    start = true;
+    mot_run = true;
+    start_time = millis();
   }
 
   else{
     throttle_err = true;
+    mot_run = false;
   }
     
   return throttle_err;
@@ -157,87 +116,86 @@ void stopMotors(){
   ledcWrite(PWMA, 0);
   ledcWrite(PWMB, 0);
   Serial.println("Stopping motors!");
+  mot_run = false;
 }
 
 void setup() {
+  bool status = true;
   
   Serial.begin(115200);
-  initMotors();
+
+  Wire.setPins(COMM_SDA, COMM_SCL);
+  Wire.begin();
+
+  delay(50); // Delay startup otherwise INA219 does not appear to register correctly
+  status = probeIna219();
+  if (status == false){
+    Serial.println("INA219 Error");
+  }
+
+  status = probeBMP(BMP_ADDR);
+  if (status == false){
+    Serial.println("BMP280 Error");
+  }
+
+  /* Todo - The IMU consist of 2 seperate pieces of hardware that could be checked seperately or together.
+   * status = probeIMU();
+   * if (status == false){
+   *     Serial.println("IMU Error");
+   *}
+   */
+
   
-  uint8_t board_status = initBus();
-  
-  if (board_status > 0){
-    Serial.print("Error configuring ");
-    
-    if (board_status == 1){
-      Serial.println("INA219");
-    }
-
-    if (board_status == 2){
-      Serial.println("SSD1306");
-    }
-
-    if (board_status == 3){
-      Serial.println("BMP280");
-    }
-
-    /* Todo - This can either be considered as 1 unit or 2 units given that there are two physcial components
-    if (board_status == 4){
-      Serial.println("IMU");
-    } */
+  status = probeSSD1306(DISP_ADDR);
+  if (status == false){
+    Serial.println("OLED Error");
   }
 
   else {
     bootScreen();
   }
-
-  motion = 0;
+  
+  initMotors();
+  
+  mot_run = 0;
+  
   fetchBmp280Data();
   if(ugv_temp <= 5.00){
     Serial.println("Warn low temp");
+    // TODO - possible print a frost graphic or temperature icon with exclaimation mark
   }
 
 }
 
 void loop() {
-    
-  powerData ugvStatus;
+
+  ugvPower powerData;
+
+  unsigned long current_time = millis();
 
   fetchSerial();
   processData();
 
-  /* Does not preform as expected */
-  
-  if (motion){
-    motion_timer = timerBegin(80000000);
-    timerAttachInterrupt(motion_timer, &motion_ISR);
-    timerAlarm(motion_timer, 2000000, true, 0);
-    //timerStart(motion_timer); 
-  }
-  else{
-    timerStop(motion_timer);
-  }
+  if (mot_run == true){
 
-  if (active == true){
+    if (current_time - start_time >= motor_timeout){
+      
+      stopMotors();
+      mot_run = false;
+    }
+  }
+  
+  if (bus_active == true){
     unsigned long health_timer = millis();
     if(health_timer - last_sampled >= sample_rate){
-      ina219Get(&ugvStatus);
-      if(!ugvStatus.batt_nom){
+      ina219Get(&powerData);
+      if(!powerData.batt_nom){
         sample_rate = 2000;
       }
-      displayPowerData(&ugvStatus);
+      displayPowerData(powerData.volt_bus, powerData.current_mA);
       last_sampled = health_timer;
     }
   }
-
-
-  /*
-  if(motion == true){
-    delay(2000);
-    stopMotors();
-    motion = false;
-  } */
-
 }
 
 void fetchSerial(){
@@ -290,13 +248,9 @@ void processData(){
         rangeErr = setMotors(throt_a, throt_b);
         if (rangeErr == true){
           Serial.println("Throttle error: value out of range!");
-          motion = false;
+          mot_run = false;
         }
 
-        else {
-          motion = true;
-          start = true;
-        }
         break;
 
       case 'h': // Stop motors
@@ -310,7 +264,7 @@ void processData(){
 
       case 'p': // Power down command - consider also adding a delay option
         deactivateBus();
-        active = false;
+        bus_active = false;
         Serial.println("okay to shutdown!");
         break;
 
