@@ -30,6 +30,7 @@ bool probeIna219(){
     ina219.setBusRange(BRNG_16);
     ina219.setPGain(PG_320);
     ina219.setShuntSizeInOhms(0.01);
+    ina219.setMeasureMode(CONTINUOUS);
     return true;
   }
 }
