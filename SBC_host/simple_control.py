@@ -16,22 +16,25 @@ valid_keys = {'w', 'a', 's', 'd', ',','.'}
 # Initialize serial connection to SBC using the corresponding serial device
 
 # Raspberry PI (Bluetooth should be disabled on the Pi 3 and Pi4) remember to enable in raspi-config
-ser = serial.Serial('/dev/ttyAMA0', 115200)
+#ser = serial.Serial('/dev/ttyAMA0', 115200)
 
 # Pcduino 2 or 3, enable overlay in armbian-config 
 # ser = serial.Serial('/dev/ttyS2', 115200)
 
+ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
 
 def send_motion(mota_speed, motb_speed):
     cmd = {
-        "comd": "m",
+        "cmd":"m",
         "mota":mota_speed,
         "motb":motb_speed
     }
-    json_command = json.dumps(cmd)
-    json_command = json_command + '\n'
+    json_command =  json.dumps(cmd)
+    json_command = '<' + json_command + '>'
     print(json_command)
-    ser.write(json_command.encode('utf-8'))
+    json_command = json_command.encode('ascii')
+    ser.write(json_command)
+    ser.flush()
 
 def readchar():
     fd = sys.stdin.fileno()
@@ -69,22 +72,25 @@ try:
         if keyp == 'w' or ord(keyp) ==16:
             send_motion(throttle_level, throttle_level)
             print('Forward: ' + str(throttle_level))
+            time.sleep(0.5)
 
         elif keyp == 's' or ord(keyp) == 17:
             send_motion(throttle_inv, throttle_inv)
             print('Reverse: ' + str(throttle_level))
-            run_time = 3
-            
+            time.sleep(0.5)  
+
         elif keyp == 'd' or ord(keyp) == 18:
             print('Spinning right ', end=' ') # The IMU is not yet operation so have no point of reference to spin from therefore instead we be rotating for a given point of time
             send_motion(throttle_level, throttle_inv)
             print('at' + str(throttle_level))
+            time.sleep(0.5)
 
 
         elif keyp == 'a' or ord(keyp) == 19:
             print('Spinning left', end=' ')
             send_motion(throttle_inv, throttle_level)
             print('at' + str(throttle_level))
+            time.sleep(0.5)
             
 
         elif keyp == '.' or keyp == '>':
